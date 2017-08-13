@@ -1,0 +1,82 @@
+
+sudo cp flume-sources-1.0-SNAPSHOT.jar /usr/lib/flume-ng/lib
+sudo cp twitter4j-core-3.0.3.jar /usr/lib/flume-ng/lib
+sudo cp twitter4j-media-support-3.0.3.jar /usr/lib/flume-ng/lib
+sudo cp twitter4j-stream-3.0.3.jar /usr/lib/flume-ng/lib
+sudo cp flume-ng-core-1.7.0.jar /usr/lib/flume-ng/lib
+
+
+sudo cp twitter.conf /etc/flume-ng/conf
+
+
+cd /etc/flume-ng/conf
+
+cd /usr/lib/flume-ng/lib/
+
+su root
+ 
+cd /etc/flume-ng/conf
+mv flume-env.sh.template flume-env.sh
+
+#flume-env.sh
+export JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera
+export JAVA_OPTS="-Xms100m -Xmx2000m -Dcom.sun.management.jmxremote"
+FLUME_CLASSPATH=" /usr/lib/flume-ng/lib/*"
+
+
+#twitter conf
+TwitterAgent.sources= Twitter
+TwitterAgent.channels= MemChannel
+TwitterAgent.sinks=HDFS
+TwitterAgent.sources.Twitter.type = com.cloudera.flume.source.TwitterSource
+TwitterAgent.sources.Twitter.channels=MemChannel
+
+TwitterAgent.sources.Twitter.consumerKey=<consumerKey>
+TwitterAgent.sources.Twitter.consumerSecret=<consumerSecret>
+TwitterAgent.sources.Twitter.accessToken=<accessToken>
+TwitterAgent.sources.Twitter.accessTokenSecret=	<accessTokenSecret>
+
+TwitterAgent.sources.Twitter.keywords= hadoop,election,sports,cricket,Big data,News
+
+TwitterAgent.sinks.HDFS.channel=MemChannel
+TwitterAgent.sinks.HDFS.type=hdfs
+TwitterAgent.sinks.HDFS.hdfs.path=hdfs://localhost:8020/user/cloudera/twitter_data/%Y-%m-%d-%H-%M
+TwitterAgent.sinks.HDFS.hdfs.fileType=DataStream
+TwitterAgent.sinks.HDFS.hdfs.writeformat=Text
+TwitterAgent.sinks.HDFS.hdfs.batchSize=1000
+TwitterAgent.sinks.HDFS.hdfs.rollSize=0
+TwitterAgent.sinks.HDFS.hdfs.rollCount=10000
+TwitterAgent.sinks.HDFS.hdfs.rollInterval=600
+TwitterAgent.channels.MemChannel.type=memory
+TwitterAgent.channels.MemChannel.capacity=100000
+TwitterAgent.channels.MemChannel.transactionCapacity=1000
+
+
+
+flume-ng agent -c /etc/flume-ng/conf -f /etc/flume-ng/conf/twitter.conf -n TwitterAgent -Dflume.root.logger=INFO,console
+
+
+hadoop fs -ls hdfs://localhost:8020/user/cloudera/
+hadoop fs -ls hdfs://localhost:8020/user/cloudera/twitter_data/
+
+
+su roo
+cd /etc/flume-ng/conf
+ cat > TwitterDataAvroSchema.avsc
+
+
+drop table tweets;
+CREATE TABLE tweets
+  ROW FORMAT SERDE
+     'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+  STORED AS INPUTFORMAT
+     'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+  OUTPUTFORMAT
+     'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+  TBLPROPERTIES ('avro.schema.url'='file:///etc/flume-ng/conf/TwitterDataAvroSchema.avsc') ;
+
+LOAD DATA INPATH '/user/cloudera/twitter_data/*/FlumeData.*' OVERWRITE INTO TABLE tweets;
+
+hive - f avrodataread.hql
+hive
+desc tweets;
